@@ -1,0 +1,29 @@
+{
+  "name": "chap-app",
+  "version": "1.0.0",
+  "description": "small chat app made with socket.io",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev-start": "nodemon server.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/LeoGuagenti/chap-app.git"
+  },
+  "author": "Leonardo Guagenti",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/LeoGuagenti/chap-app/issues"
+  },
+  "homepage": "https://github.com/LeoGuagenti/chap-app#readme",
+  "dependencies": {
+    "express": "^4.17.1",
+    "http": "0.0.1-security",
+    "socket.io": "^2.3.0"
+  },
+  "devDependencies": {
+    "nodemon": "^2.0.4"
+  }
+}
