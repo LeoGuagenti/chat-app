@@ -1,13 +1,18 @@
-var socket = io.connect('http://192.168.0.210:3000')
+var socket = io.connect('http://localhost:3000')
 
 var messageForm = document.getElementById('message-form')
 var messageInput = document.getElementById('message-input')
 var messageContainer = document.getElementById('message-container')
 
-function newElment(type, data){
+var newElment = (type, data) => { 
     const element = document.createElement(type)
+    element.id = "chat-message"
     element.innerHTML = data
     return element
+}
+
+var scrollToBottom = () => {
+    messageContainer.scrollTop = messageContainer.scrollHeight;
 }
 
 messageForm.addEventListener('submit', event => {
@@ -19,6 +24,7 @@ messageForm.addEventListener('submit', event => {
 
         const messageElement = newElment('div', `(You): ${message}`)
         messageContainer.append(messageElement)
+        messageContainer.scrollTop = messageContainer.scrollHeight;
     }
 })
 
@@ -26,14 +32,17 @@ socket.on('chat-message', (message, userId) => {
     console.log(`${userId}> ${message}`)
     const messageElement = newElment('div', `${userId}: ${message}`)
     messageContainer.append(messageElement)
+    messageContainer.scrollTop = messageContainer.scrollHeight;
 })
 
 socket.on('connect-message', data => {
     const messageElement = newElment('div', `${data} has connected`)
     messageContainer.append(messageElement)
+    messageContainer.scrollTop = messageContainer.scrollHeight;
 })
 
 socket.on('disconnect-message', data => {
     const messageElement = newElment('div', `${data} has disconnected`)
     messageContainer.append(messageElement)
+    messageContainer.scrollTop = messageContainer.scrollHeight;
 })
