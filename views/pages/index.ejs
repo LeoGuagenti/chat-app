@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="en">
+    <link rel="stylesheet" href="//maxcdn.bootstrapcdn.com/bootstrap/3.2.0/css/bootstrap.min.css">
+    <body>
+        <main>
+            <div class="jumbotron">
+                <h1>Home Page</h1>
+                <p>Chat App</p>
+                <button type="button" onclick="redirect('/logout');" class="btn btn-primary">Log out</button>
+                <button type="button" onclick="redirect('/chat');" class="btn btn-info">Chatroom</button>
+            </div>
+        </main>
+        <script>
+            function redirect(location){
+                window.location = location
+            }
+        </script>
+    </body>
+</html>

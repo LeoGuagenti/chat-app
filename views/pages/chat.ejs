@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+    <link rel="stylesheet" href="//maxcdn.bootstrapcdn.com/bootstrap/3.2.0/css/bootstrap.min.css">
+    <body>
+        <main>
+            <div class="jumbotron">
+                <div class="pull-right">
+                    <button type="button" onclick="redirect('/');" class="btn btn-primary">Home</button>
+                    <button type="button" onclick="redirect('/logout');" class="btn btn-light">Logout</button>
+                </div>
+                <h1 class="display-4">Chatroom</h1>
+                <p>Logged in as '<%= user %>'</p>
+                <hr class="my-4">
+
+                <div style="height: 300px; background-color: #cdcdcd;">
+                    <!-- messages append here -->
+                </div>
+
+                <form style="display: flex;" onsubmit="return sendMessage();" method="POST">
+                    <input name="message" id="message-input" class="form-control" type="text" placeholder="Message">
+                    <select name="to" id="formSelect" class="form-control" style="width: 130px;">
+                        <option>All</option>
+                        <option>Server</option>
+                    </select>
+                    <input type="button" onclick="sendMessage()" type="submit" class="btn btn-primary" value="Send" style="width: 200px;">
+                </form>
+            </div>
+        </main>
+        <script src="/socket.io/socket.io.js"></script>
+        <script>
+            var $ = (id) => {return document.getElementById(id)}
+            var socket = io('http://localhost:3000/chat')
+
+            var messageInput = $('message-input');
+            var formSelect = $('formSelect')
+
+            socket.on('message', data => {
+                console.table(data)
+                //create message card
+                //append message card
+            })
+
+            function sendMessage(scope){
+                var message = messageInput.value;
+                if(message.length > 0){
+                    socket.emit('message-send', {
+                        to: formSelect.value,
+                        message: message
+                    })
+                }
+                messageInput.value = ""
+            }
+
+            function jumpBottom(){
+                //scroll to bottom of message container
+            }
+
+            function redirect(location){
+                window.location = location
+            }
+        </script>
+    </body>
+</html>

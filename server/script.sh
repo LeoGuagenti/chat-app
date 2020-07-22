@@ -1,0 +1,1 @@
+eval "curl -X POST -H 'Content-Type: application/x-www-form-urlencoded' -d 'username=Leo&password=pass' http://localhost:3000/login"

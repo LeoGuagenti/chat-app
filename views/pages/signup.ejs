@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+    <link rel="stylesheet" href="//maxcdn.bootstrapcdn.com/bootstrap/3.2.0/css/bootstrap.min.css">
+
+    <body>
+        <main>
+            <div class="jumbotron">
+                <h1>Sign Up</h1>
+                <p style="color: <%= color %>;"><%= errorMessage %></p>
+
+                <form action="/signup" method="POST">
+                    <div class="form-group">
+                        <label for="usernameEntry">Username</label>
+                        <input name="username" type="username" class="form-control" id="usernameEntry" aria-describedby="usernameHelp" placeholder="Enter username">
+                        <small id="usernameHelp" class="form-text text-muted">Your username uniquely identifies you</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="passwordEntry">Password</label>
+                        <input name="password" type="password" class="form-control" id="passwordEntry" aria-describedby="passwordHelp" placeholder="Enter password">
+                        <small id="passwordHelp" class="form-text text-muted">Never share your password with anyone!</small>
+                    </div>
+
+                    <button type="button" onclick="redirect('/login');" class="btn btn-secondary">Log In</button>
+                    <button type="submit" class="btn btn-primary">Sign Up</button>
+                </form>
+            </div>
+            <script>
+                function redirect(location){
+                    window.location = location
+                }
+            </script>
+        </main>
