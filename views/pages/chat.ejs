@@ -8,22 +8,25 @@
                     <button type="button" onclick="redirect('/');" class="btn btn-primary">Home</button>
                     <button type="button" onclick="redirect('/logout');" class="btn btn-light">Logout</button>
                 </div>
+                
                 <h1 class="display-4">Chatroom</h1>
                 <p>Logged in as '<%= user %>'</p>
                 <hr class="my-4">
 
-                <div style="height: 300px; background-color: #cdcdcd;">
+                <div id="message-container" style="height: 600px; background-color: #cdcdcd; overflow: scroll;">
                     <!-- messages append here -->
                 </div>
 
-                <form style="display: flex;" onsubmit="return sendMessage();" method="POST">
+                <div style="display: flex;">
                     <input name="message" id="message-input" class="form-control" type="text" placeholder="Message">
                     <select name="to" id="formSelect" class="form-control" style="width: 130px;">
                         <option>All</option>
-                        <option>Server</option>
+                        <% for(var i = 0; i < connectedUsers.length; i++){ %>
+                            <option><%= connectedUsers[i] %></option>
+                        <% } %>
                     </select>
-                    <input type="button" onclick="sendMessage()" type="submit" class="btn btn-primary" value="Send" style="width: 200px;">
-                </form>
+                    <input type="button" onclick="sendMessage()" class="btn btn-primary" value="Send" style="width: 200px;">
+                </div>
             </div>
         </main>
         <script src="/socket.io/socket.io.js"></script>
@@ -31,28 +34,95 @@
             var $ = (id) => {return document.getElementById(id)}
             var socket = io('http://localhost:3000/chat')
 
+            document.onkeypress = (event) => {
+                if(event.which == 13){
+                    sendMessage()
+                }
+            }
+
             var messageInput = $('message-input');
             var formSelect = $('formSelect')
+            var messageContainer = $('message-container')
 
-            socket.on('message', data => {
-                console.table(data)
-                //create message card
-                //append message card
+            socket.on('public-message-send', data => {             
+                appendMessage(
+                    messageContainer, 
+                    `[${data.from}] ${data.message}`, 
+                    'black',
+                    jumpBottom()
+                )
             })
 
-            function sendMessage(scope){
-                var message = messageInput.value;
+            socket.on('private-message-send', data => {
+                console.log('private msg')
+                console.table(data)
+            })
+
+            socket.on('user-disconnect', (data) => {
+                appendMessage(
+                    messageContainer, 
+                    `'${data.username}' has left the chat.`, 
+                    'red',
+                    jumpBottom()
+                )
+            })
+
+            socket.on('user-connect', (data) => {
+                appendMessage(
+                    messageContainer, 
+                    `'${data.username}' has joined the chat.`, 
+                    'green',
+                    jumpBottom()
+                )
+            })
+
+            function sendMessage(){
+                var message = messageInput.value
+                var to = formSelect.value
+
                 if(message.length > 0){
-                    socket.emit('message-send', {
-                        to: formSelect.value,
-                        message: message
-                    })
+                    if(to === 'All'){
+                        socket.emit('public-message', {
+                            to: to,
+                            message: message
+                        })
+
+                        appendMessage(
+                            messageContainer, 
+                            `(You) ${message}`, 
+                            'blue',
+                            jumpBottom()
+                        )
+                    }else{
+                        socket.emit('private-message', {
+                            to: to,
+                            message: message
+                        })
+
+                        //append private message on sender-client side first
+                    }
                 }
                 messageInput.value = ""
             }
 
+            function appendMessage(appendee, message, color, callback){
+                var id = 'message-' + `${Math.random() * 100000}`.replace(".", "-")
+                appendee.innerHTML += ` <div style="padding: 10px; border-bottom: 1px solid #acacac">  
+                                            <span>
+                                                <span id="${id}" style="color:${color}; font-size: 1.8vh"></span>
+                                            </span>
+                                            <br>
+                                        </div>
+                                    `
+                            
+                $(id).innerText = message
+
+                if(callback){callback()}
+            }
+
+
             function jumpBottom(){
-                //scroll to bottom of message container
+                messageContainer.scrollTop = messageContainer.scrollHeight
             }
 
             function redirect(location){

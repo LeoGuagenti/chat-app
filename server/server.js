@@ -14,6 +14,7 @@ var passportSocket = require('passport.socketio')
 
 const sessionDB = 'mongodb://localhost:27017/sessions_db'
 const usersDB = 'mongodb://localhost:27017/users_db'
+const socketDB = 'mongodb://localhost:27017/socket_pool'
 
 var mongoose = require('mongoose')
 var MongoStore = require('connect-mongo')(session)
@@ -39,9 +40,10 @@ app.use(session({
     secret: 'x-marks-the-spot'
 }))
 
-mongoose.connect(usersDB, { useNewUrlParser: true, useUnifiedTopology: true })
+var userdbConnection = mongoose.createConnection(usersDB, { useNewUrlParser: true, useUnifiedTopology: true })
+var socketdbConnection = mongoose.createConnection(socketDB, { useNewUrlParser: true, useUnifiedTopology: true })
 
-var schema = mongoose.Schema({
+var userSchema = mongoose.Schema({
     username: {
         type: String,
         required: true
@@ -51,8 +53,19 @@ var schema = mongoose.Schema({
         required: true
     }
 }, {versionKey: false})
+const User = userdbConnection.model('User', userSchema)
 
-const User = mongoose.model('User', schema)
+var socketSchema = mongoose.Schema({
+    socketId: {
+        type: String,
+        require: true
+    },
+    client: {
+        type: String,
+        require: true
+    }
+})
+const Socket = socketdbConnection.model('Socket', socketSchema)
 
 passport.use(new LocalStrategy({username: 'username', password: 'password'},
     async (username, password, next) => {
@@ -109,12 +122,11 @@ app.get('/login', (req, res) => {
 
 app.post('/login', (req, res, next) => {
     passport.authenticate('local', (err, user) => {
-        if(err){ throw err }
+        if (err) throw err;
+
         if(user){
             req.login(user, err => {
-                console.log('logging in')
-                if(err){ throw err }
-                
+                if (err) throw err;
                 res.redirect('/')
             })
         }else{
@@ -163,10 +175,17 @@ app.get('/logout', (req, res) => {
     res.redirect('/login')
 })
 
-app.get('/chat', (req, res) => {
+app.get('/chat', async (req, res) => {
     if(req.isAuthenticated()){
+        var connectedUsers = await Socket.find()
+        
+        connectedUsers = connectedUsers.map(userSocket => {
+            return userSocket.client
+        })
+
         res.render('pages/chat', {
-            user: req.user.username
+            user: req.user.username,
+            connectedUsers: connectedUsers
         })
     }else{
         res.redirect('/login')
@@ -175,16 +194,41 @@ app.get('/chat', (req, res) => {
 
 
 var eventSocket = io.of('/chat')
-eventSocket.on('connection', socket => {    
+eventSocket.on('connection', async (socket) => {    
     console.log(`user '${socket.request.user.username}' connected`)
+    socket.broadcast.emit('user-connect', {
+        username: socket.request.user.username
+    })
 
-    socket.on('message-send', data => {
-        //this makes it to client, append to client messages
-        socket.emit('message', {
+    await Socket.create({
+        socketId: socket.id,
+        client: socket.request.user.username
+    })
+
+    socket.on('public-message', data => {
+        socket.broadcast.emit('public-message-send', {
             from: socket.request.user.username,
             to: data.to,
             message: data.message
         })
+    })
+
+    socket.on('private-message', async (data) => {
+        console.log('server: revcieved priv mesg')
+        var recipient = await Socket.findOne({client: data.to})
+        console.log(recipient)
+
+        //this doesnt work, maybe going to wrong socketid
+        socket.broadcast.to(recipient.socketId).emit('private-message-send', {
+            from: socket.request.user.username,
+            message: data.message
+        })
+    })
+
+    socket.on('disconnect', async () => {
+        await Socket.findOneAndDelete({socketId: socket.id})
+        console.log(`user '${socket.request.user.username}' disconnected`)
+        socket.broadcast.emit('user-disconnect', {username: socket.request.user.username})
     })
 })
 
