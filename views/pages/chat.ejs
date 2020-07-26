@@ -22,7 +22,9 @@
                     <select name="to" id="formSelect" class="form-control" style="width: 130px;">
                         <option>All</option>
                         <% for(var i = 0; i < connectedUsers.length; i++){ %>
-                            <option><%= connectedUsers[i] %></option>
+                            <% if(connectedUsers[i] != user){ %>
+                                <option><%= connectedUsers[i] %></option>
+                            <% } %>
                         <% } %>
                     </select>
                     <input type="button" onclick="sendMessage()" class="btn btn-primary" value="Send" style="width: 200px;">
@@ -44,18 +46,35 @@
             var formSelect = $('formSelect')
             var messageContainer = $('message-container')
 
-            socket.on('public-message-send', data => {             
+            socket.on('initial-messages', data => {
+                data.messages.forEach(message => {
+                    appendMessage(
+                        messageContainer, 
+                        (data.you == message.from) ? `(You) ${message.content}` : `[${message.from}] ${message.content}`,
+                        'black',
+                        jumpBottom()
+                    )
+                })
+            })
+
+            //public message
+            socket.on('global-message', data => {            
                 appendMessage(
                     messageContainer, 
-                    `[${data.from}] ${data.message}`, 
-                    'black',
+                    `${data.from} ${data.message}`, 
+                    data.color,
                     jumpBottom()
                 )
             })
 
-            socket.on('private-message-send', data => {
-                console.log('private msg')
-                console.table(data)
+            //private message
+            socket.on('direct-message', data => {
+                appendMessage(
+                    messageContainer,
+                    `${data.from} ${data.message}`,
+                    data.color,
+                    jumpBottom()
+                )
             })
 
             socket.on('user-disconnect', (data) => {
@@ -68,6 +87,8 @@
             })
 
             socket.on('user-connect', (data) => {
+                formSelect.innerHTML += `<option>${data.username}</option>`
+
                 appendMessage(
                     messageContainer, 
                     `'${data.username}' has joined the chat.`, 
@@ -82,44 +103,25 @@
 
                 if(message.length > 0){
                     if(to === 'All'){
-                        socket.emit('public-message', {
-                            to: to,
-                            message: message
-                        })
-
-                        appendMessage(
-                            messageContainer, 
-                            `(You) ${message}`, 
-                            'blue',
-                            jumpBottom()
-                        )
+                        socket.emit('public-message', { message: message })
                     }else{
-                        socket.emit('private-message', {
-                            to: to,
-                            message: message
-                        })
-
-                        //append private message on sender-client side first
+                        socket.emit('private-message', { to: to, message: message })
                     }
                 }
                 messageInput.value = ""
             }
-
-            function appendMessage(appendee, message, color, callback){
+            
+            function appendMessage(parent, message, color, callback){
                 var id = 'message-' + `${Math.random() * 100000}`.replace(".", "-")
-                appendee.innerHTML += ` <div style="padding: 10px; border-bottom: 1px solid #acacac">  
-                                            <span>
-                                                <span id="${id}" style="color:${color}; font-size: 1.8vh"></span>
-                                            </span>
-                                            <br>
-                                        </div>
+                parent.innerHTML += `   <div style="padding: 10px; border-bottom: 1px solid #acacac">  
+                                            <span id="${id}" style="color:${color}; font-size: 1.8vh"></span>
+                                        <br></div>
                                     `
                             
                 $(id).innerText = message
 
                 if(callback){callback()}
             }
-
 
             function jumpBottom(){
                 messageContainer.scrollTop = messageContainer.scrollHeight

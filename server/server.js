@@ -12,38 +12,18 @@ var passport = require('passport')
 var LocalStrategy = require('passport-local').Strategy
 var passportSocket = require('passport.socketio')
 
-const sessionDB = 'mongodb://localhost:27017/sessions_db'
-const usersDB = 'mongodb://localhost:27017/users_db'
-const socketDB = 'mongodb://localhost:27017/socket_pool'
+const db = 'mongodb://localhost:27017/chatapp_db'
 
 var mongoose = require('mongoose')
 var MongoStore = require('connect-mongo')(session)
-var sessionStorage = new MongoStore({url: sessionDB})
+var sessionStorage = new MongoStore({url: db})
 
-var io = socketio(server)
-io.use(passportSocket.authorize({
-    key: 'connect.sid',
-    secret: 'x-marks-the-spot',
-    store: sessionStorage,
-    passport: passport,
-    cookieParser: cookieParser
-}))
+var dbConnection = mongoose.createConnection(db, { 
+    useNewUrlParser: true, 
+    useUnifiedTopology: true 
+})
 
-app.set('view engine', 'ejs')
-
-app.use(bodyParser.json())
-app.use(bodyParser.urlencoded({extended: true}))
-app.use(session({
-    store: sessionStorage,
-    resave: false,
-    saveUninitialized: false,
-    secret: 'x-marks-the-spot'
-}))
-
-var userdbConnection = mongoose.createConnection(usersDB, { useNewUrlParser: true, useUnifiedTopology: true })
-var socketdbConnection = mongoose.createConnection(socketDB, { useNewUrlParser: true, useUnifiedTopology: true })
-
-var userSchema = mongoose.Schema({
+const User = dbConnection.model('User', mongoose.Schema({
     username: {
         type: String,
         required: true
@@ -52,10 +32,29 @@ var userSchema = mongoose.Schema({
         type: String,
         required: true
     }
-}, {versionKey: false})
-const User = userdbConnection.model('User', userSchema)
+}, {
+    versionKey: false,
+    collection: 'users'
+}))
 
-var socketSchema = mongoose.Schema({
+const Message = dbConnection.model('Message', mongoose.Schema({
+    content: {
+        type: String,
+        required: true
+    },
+    from: {
+        type: String,
+        required: true
+    },
+    timeStamp: {
+        type: String,
+        required: false
+    }
+}, {
+    collection: 'messages'
+}))
+
+const Socket = dbConnection.model('Socket', mongoose.Schema({
     socketId: {
         type: String,
         require: true
@@ -64,12 +63,12 @@ var socketSchema = mongoose.Schema({
         type: String,
         require: true
     }
-})
-const Socket = socketdbConnection.model('Socket', socketSchema)
+}, {
+    collection: 'sockets'
+}))
 
 passport.use(new LocalStrategy({username: 'username', password: 'password'},
     async (username, password, next) => {
-        console.log(username)
         user = await User.findOne({username: username})
         if(user && await bcrypt.compare(password, user.password)){
             next(null, user)
@@ -88,6 +87,25 @@ passport.deserializeUser(async (id, next) => {
     user ? next(null, user) : next(null, false)
 })
 
+var io = socketio(server)
+io.use(passportSocket.authorize({
+    key: 'connect.sid',
+    secret: 'x-marks-the-spot',
+    store: sessionStorage,
+    passport: passport,
+    cookieParser: cookieParser
+}))
+
+app.set('view engine', 'ejs')
+app.use(bodyParser.json())
+app.use(bodyParser.urlencoded({extended: true}))
+app.use(session({
+    store: sessionStorage,
+    resave: false,
+    saveUninitialized: false,
+    secret: 'x-marks-the-spot',
+    maxAge: new Date(Date.now() + 60000) // 1 min
+}))
 app.use(passport.initialize())
 app.use(passport.session())
 
@@ -99,14 +117,6 @@ app.get('/', (req, res) => {
         res.redirect('/login')
     }
     res.end()
-})
-
-app.post('/', (req, res) => {
-    if(req.isAuthenticated()){
-        console.log('POST to /')
-    }else{
-        res.redirect('/login')
-    }
 })
 
 app.get('/login', (req, res) => {
@@ -192,12 +202,18 @@ app.get('/chat', async (req, res) => {
     }
 })
 
-
+const messsageLimit = 20;
 var eventSocket = io.of('/chat')
 eventSocket.on('connection', async (socket) => {    
+
     console.log(`user '${socket.request.user.username}' connected`)
     socket.broadcast.emit('user-connect', {
         username: socket.request.user.username
+    })
+
+    //send last 10 messages to client on connection
+    Message.find().sort('-1').limit(messsageLimit).exec((err, messages) => {
+        socket.emit('initial-messages', { messages: messages, you: socket.request.user.username })
     })
 
     await Socket.create({
@@ -205,33 +221,72 @@ eventSocket.on('connection', async (socket) => {
         client: socket.request.user.username
     })
 
-    socket.on('public-message', data => {
-        socket.broadcast.emit('public-message-send', {
-            from: socket.request.user.username,
-            to: data.to,
-            message: data.message
-        })
+    socket.on('public-message', (data) => {
+        if(data.message.trim() != ""){
+            Message.countDocuments({}, async (err, count) => {
+                if (err) throw err;
+
+                if(count >= messsageLimit){
+                    await Message.deleteOne()
+                }
+
+                await Message.create({
+                    from: socket.request.user.username,
+                    content: data.message.trim(),
+                    timeStamp: `${Date.now()}`
+                })
+
+                //sending to this.socket
+                socket.emit('global-message', {
+                    from: '(You)',
+                    message: data.message,
+                    color: 'blue'
+                })
+
+                //sending to public clients
+                socket.broadcast.emit('global-message', {
+                    from: `[${socket.request.user.username}]`,
+                    message: data.message,
+                    color: 'black'
+                })
+            })
+        }
     })
 
     socket.on('private-message', async (data) => {
-        console.log('server: revcieved priv mesg')
-        var recipient = await Socket.findOne({client: data.to})
-        console.log(recipient)
+        var to = await Socket.findOne({client: data.to})
 
-        //this doesnt work, maybe going to wrong socketid
-        socket.broadcast.to(recipient.socketId).emit('private-message-send', {
-            from: socket.request.user.username,
-            message: data.message
+        //sending to this.socket 
+        socket.emit('direct-message', {
+            from: `(You → ${data.to})`,
+            message: data.message,
+            color: 'purple'
+        })
+
+        //sending to specified socket
+        socket.broadcast.to(to.socketId).emit('direct-message', {
+            from: `(${socket.request.user.username} → You)`,
+            message: data.message,
+            color: 'purple'
         })
     })
 
     socket.on('disconnect', async () => {
-        await Socket.findOneAndDelete({socketId: socket.id})
         console.log(`user '${socket.request.user.username}' disconnected`)
+        
+        await Socket.findOneAndDelete({socketId: socket.id})
         socket.broadcast.emit('user-disconnect', {username: socket.request.user.username})
     })
 })
 
 server.listen(3000, () => {
-    console.log('Server running')
+    console.log('~Server running')
 })
+
+/* 
+    TODO LIST 
+    + fix/resolve session storage bugs
+    + session expirations
+    + fix jumpBottom error - not working on message send
+*/
+
