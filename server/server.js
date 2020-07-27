@@ -15,6 +15,7 @@ var passportSocket = require('passport.socketio')
 const db = 'mongodb://localhost:27017/chatapp_db'
 
 var mongoose = require('mongoose')
+const { stdin } = require('process')
 var MongoStore = require('connect-mongo')(session)
 var sessionStorage = new MongoStore({url: db})
 
@@ -30,6 +31,10 @@ const User = dbConnection.model('User', mongoose.Schema({
     }, 
     password: {
         type: String,
+        required: true
+    },
+    loggedIn: {
+        type: Boolean,
         required: true
     }
 }, {
@@ -70,10 +75,19 @@ const Socket = dbConnection.model('Socket', mongoose.Schema({
 passport.use(new LocalStrategy({username: 'username', password: 'password'},
     async (username, password, next) => {
         user = await User.findOne({username: username})
-        if(user && await bcrypt.compare(password, user.password)){
-            next(null, user)
+        
+        if(!user){
+            return next(null, false, {message: 'User does not exist.'})
+        }
+
+        if(user.loggedIn){
+            return next(null, false, {message: 'User is already logged in.'})
+        }
+
+        if(await bcrypt.compare(password, user.password)){
+            return next(null, user)
         }else{
-            next(null, false)
+            return next(null, false, {message: 'Password is incorrect.'})
         }
     }
 ))
@@ -110,9 +124,12 @@ app.use(passport.initialize())
 app.use(passport.session())
 
 /* ROUTES --------------------------------------------- */
-app.get('/', (req, res) => {
+app.get('/', async (req, res) => {
     if(req.isAuthenticated()){
         res.render('pages/index')
+
+        var user = await User.findOne({username: req.user.username})
+        console.log(user.loggedIn)
     }else{
         res.redirect('/login')
     }
@@ -131,17 +148,24 @@ app.get('/login', (req, res) => {
 })
 
 app.post('/login', (req, res, next) => {
-    passport.authenticate('local', (err, user) => {
+    passport.authenticate('local', (err, user, errorMessage) => {
         if (err) throw err;
 
         if(user){
-            req.login(user, err => {
+            req.login(user, async (err) => {
                 if (err) throw err;
-                res.redirect('/')
+
+                var requestedUser = await User.findOne({username: user.username})
+                requestedUser.loggedIn = true
+
+                requestedUser.save(err => {
+                    if (err) throw err
+                    res.redirect('/')
+                })
             })
         }else{
             res.render('pages/login', {
-                errorMessage: `Username or password incorrect!`,
+                errorMessage: errorMessage.message,
                 color: 'red'
             })
         }
@@ -169,7 +193,8 @@ app.post('/signup', async (req, res) => {
         const hashedPassword = await bcrypt.hash(trimmedPassword, 10)
         await User.create({
             username: trimmedUsername,
-            password: hashedPassword
+            password: hashedPassword,
+            loggedIn: false
         })
         res.redirect('/login')
     }else{
@@ -182,6 +207,15 @@ app.post('/signup', async (req, res) => {
 
 app.get('/logout', (req, res) => {
     req.session.destroy()
+    User.findOne({username: req.user.username}, (err, user) => {
+        if (err) throw err
+
+        user.loggedIn = false
+        user.save(err => {
+            if (err) throw err
+        })
+    })
+
     res.redirect('/login')
 })
 
@@ -280,13 +314,29 @@ eventSocket.on('connection', async (socket) => {
 })
 
 server.listen(3000, () => {
-    console.log('~Server running')
+    console.log('~Server running')    
+})
+
+//server terminal commands
+stdin.addListener('data', buffer => {
+    var inputTokens = buffer.toString().trim().split(' ')
+
+    switch(inputTokens[0]){
+        case 'echo':
+            console.log('\x1b[36m%s\x1b[0m', inputTokens.slice(1).join(' '))
+            break;
+        case 'stop':
+            console.log('\x1b[33m%s\x1b[0m', 'Server stopping...')
+            process.exit()
+        default:
+            console.log('\x1b[31m%s\x1b[0m', 'Command undefined.')
+    }
 })
 
 /* 
     TODO LIST 
-    + fix/resolve session storage bugs
     + session expirations
-    + fix jumpBottom error - not working on message send
+    + image/file support
+    + server commands
 */
 

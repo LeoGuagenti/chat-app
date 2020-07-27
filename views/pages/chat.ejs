@@ -34,7 +34,9 @@
         <script src="/socket.io/socket.io.js"></script>
         <script>
             var $ = (id) => {return document.getElementById(id)}
-            var socket = io('http://localhost:3000/chat')
+            var messageInput = $('message-input');
+            var formSelect = $('formSelect')
+            var messageContainer = $('message-container')
 
             document.onkeypress = (event) => {
                 if(event.which == 13){
@@ -42,9 +44,7 @@
                 }
             }
 
-            var messageInput = $('message-input');
-            var formSelect = $('formSelect')
-            var messageContainer = $('message-container')
+            var socket = io('http://localhost:3000/chat')
 
             socket.on('initial-messages', data => {
                 data.messages.forEach(message => {
@@ -52,7 +52,7 @@
                         messageContainer, 
                         (data.you == message.from) ? `(You) ${message.content}` : `[${message.from}] ${message.content}`,
                         'black',
-                        jumpBottom()
+                        jumpBottom
                     )
                 })
             })
@@ -63,7 +63,7 @@
                     messageContainer, 
                     `${data.from} ${data.message}`, 
                     data.color,
-                    jumpBottom()
+                    jumpBottom
                 )
             })
 
@@ -73,16 +73,24 @@
                     messageContainer,
                     `${data.from} ${data.message}`,
                     data.color,
-                    jumpBottom()
+                    jumpBottom
                 )
             })
 
             socket.on('user-disconnect', (data) => {
+                //remove user from formSelect options to avoid repeats
+                var options = document.getElementsByTagName('option')
+                for(var i = 0; i < options.length; i++){
+                    if(options[i].innerHTML == data.username){
+                        formSelect.remove(i)
+                    }
+                }
+
                 appendMessage(
                     messageContainer, 
                     `'${data.username}' has left the chat.`, 
                     'red',
-                    jumpBottom()
+                    jumpBottom
                 )
             })
 
@@ -93,7 +101,7 @@
                     messageContainer, 
                     `'${data.username}' has joined the chat.`, 
                     'green',
-                    jumpBottom()
+                    jumpBottom
                 )
             })
 
@@ -102,11 +110,9 @@
                 var to = formSelect.value
 
                 if(message.length > 0){
-                    if(to === 'All'){
-                        socket.emit('public-message', { message: message })
-                    }else{
+                    (to === 'All') ? 
+                        socket.emit('public-message', { message: message }) :
                         socket.emit('private-message', { to: to, message: message })
-                    }
                 }
                 messageInput.value = ""
             }
